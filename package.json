@@ -1,0 +1,19 @@
+{
+  "name": "ecommerce-backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "serve": "node server.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@hapi/hapi": "^21.3.12",
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^16.4.7",
+    "mysql2": "^3.12.0",
+    "nodemailer": "^6.10.0"
+  }
+}
