@@ -38,6 +38,22 @@ const routes = [
       auth: 'jwt'  // Middleware JWT
     }
   },
+  {
+    method: 'POST',
+    path: '/reset_password',
+    handler: handler.account.requestResetPassword,
+    options: {
+      auth: false
+    },
+  },
+  {
+    method: 'POST',
+    path: '/confirm_new_password',
+    handler: handler.account.confirmResetPassword,
+    options: {
+      auth: false
+    },
+  },
 ];
 
 module.exports = routes;

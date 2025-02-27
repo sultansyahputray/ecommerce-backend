@@ -124,8 +124,85 @@ const loginUser = async (req, h) => {
   }
 };
 
+const generateResetToken = (length = 6) => {
+  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let token = '';
+  for (let i = 0; i < length; i++) {
+    token += characters.charAt(Math.floor(Math.random() * characters.length));
+  }
+
+  return token;
+};
+
+const requestResetPassword = async (req, h) => {
+  const {email} = req.payload;
+
+  if (!email) {
+    return h.response({error: "email is required"}).code(400);
+  }
+
+  try {
+    const [users] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
+    
+    if (users.length === 0) {
+      return h.response({error: "account not found"}).code(400);
+    }
+
+    const resetToken = generateResetToken(6);
+
+    await db.query('UPDATE users SET resetToken = ?, resetTokenExpire = DATE_ADD(NOW(), INTERVAL 15 MINUTE) WHERE email = ?', [resetToken, email]);
+
+    const mailOptions = {
+      from: process.env.EMAIL_ADMIN,
+      to: email,
+      subject: 'Password Reset Token',
+      text: `Your reset password token is: ${resetToken}. This token is valid for 15 minutes.`,
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    return h.response({message: "reset token send successfully"}).code(200);
+  } 
+  
+  catch (error) {
+    console.error("error sending reset password token", error);
+    return h.response({error: "failed to send reset password token"}).code(500);
+  }
+};
+
+const confirmResetPassword = async (req, h) => {
+  const {token, newPassword} = req.payload;
+
+  if (!token || !newPassword) {
+    return h.response({error: "token and new password required"}).code(400);
+  }
+
+  try {
+    const [users] = await db.query('SELECT * FROM users WHERE resetToken = ? AND resetTokenExpire > NOW()', [token]);   
+    
+    if (users.length === 0) {
+      return h.response({error: "invalid or expired token"}).code(400);
+    }
+
+    const user = users[0];
+
+    const hashedPassword = await bcrypt.hash(newPassword,8);
+
+    await db.query('UPDATE users SET password = ?, resetToken = NULL, resetTokenExpire = NULL WHERE id = ?', [hashedPassword, user.id]);
+
+    return h.response({message: "Reset Password Successfully"}).code(200);
+  } 
+  
+  catch (error) {
+    console.error("error confirming password reset: ", error);
+    return h.response({error: "failde to confirm password reset"}).code(500);
+  }
+};
+
 module.exports = {
   registerAccount,
   verifyOTP,
   loginUser,
+  requestResetPassword,
+  confirmResetPassword,
 }
