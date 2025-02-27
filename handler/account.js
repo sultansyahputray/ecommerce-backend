@@ -1,4 +1,4 @@
-const db = require('../db');
+const db = require('../utils/db');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 
@@ -88,6 +88,8 @@ const verifyOTP = async (req, h) => {
   }
 };
 
+const {generateToken} = require('../utils/auth');
+
 const loginUser = async (req, h) => {
   const {email, password} = req.payload;
 
@@ -108,7 +110,12 @@ const loginUser = async (req, h) => {
       return h.response({error: "password or email invalid"}).code(400);
     }
 
-    return h.response({message: "login successfully"}).code(200);
+    const token = generateToken(user[0]);
+
+    return h.response({
+      message: "login successfully",
+      token,
+    }).code(200);
   } 
   
   catch (error) {
