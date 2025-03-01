@@ -88,7 +88,7 @@ const verifyOTP = async (req, h) => {
   }
 };
 
-const {generateToken} = require('../utils/auth');
+// const {generateToken} = require('../utils/auth');
 
 const loginUser = async (req, h) => {
   const {email, password} = req.payload;
@@ -110,11 +110,15 @@ const loginUser = async (req, h) => {
       return h.response({error: "password or email invalid"}).code(400);
     }
 
-    const token = generateToken(user[0]);
+    // const token = generateToken(user[0]);
+
+    // return h.response({
+    //   message: "login successfully",
+    //   token,
+    // }).code(200);
 
     return h.response({
-      message: "login successfully",
-      token,
+      message: "login successfully"
     }).code(200);
   } 
   
@@ -135,67 +139,115 @@ const generateResetToken = (length = 6) => {
 };
 
 const requestResetPassword = async (req, h) => {
-  const {email} = req.payload;
+  const { email } = req.payload;
 
   if (!email) {
-    return h.response({error: "email is required"}).code(400);
+    return h.response({ error: "Email is required" }).code(400);
   }
 
   try {
+    // Cek apakah user dengan email tersebut ada
     const [users] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
-    
+
     if (users.length === 0) {
-      return h.response({error: "account not found"}).code(400);
+      return h.response({ error: "Account not found" }).code(400);
     }
 
-    const resetToken = generateResetToken(6);
+    // Generate OTP 6 karakter (kombinasi angka dan huruf)
+    const resetToken = generateResetToken(6); 
 
-    await db.query('UPDATE users SET resetToken = ?, resetTokenExpire = DATE_ADD(NOW(), INTERVAL 15 MINUTE) WHERE email = ?', [resetToken, email]);
+    // Simpan OTP ke tabel otp_verification
+    await db.query(
+      `INSERT INTO otp_verification (email, otp, type, expires_at, request_reset_password, otp_verified)
+       VALUES (?, ?, 'password_reset', DATE_ADD(NOW(), INTERVAL 15 MINUTE), TRUE, FALSE)`,
+      [email, resetToken]
+    );
 
+    // Kirim email ke pengguna
     const mailOptions = {
       from: process.env.EMAIL_ADMIN,
       to: email,
-      subject: 'Password Reset Token',
-      text: `Your reset password token is: ${resetToken}. This token is valid for 15 minutes.`,
+      subject: 'Password Reset OTP',
+      text: `Your password reset OTP is: ${resetToken}. This OTP is valid for 15 minutes.`,
     };
 
     await transporter.sendMail(mailOptions);
 
-    return h.response({message: "reset token send successfully"}).code(200);
-  } 
-  
-  catch (error) {
-    console.error("error sending reset password token", error);
-    return h.response({error: "failed to send reset password token"}).code(500);
+    return h.response({ message: "Reset OTP sent successfully" }).code(200);
+  } catch (error) {
+    console.error("Error sending reset password OTP", error);
+    return h.response({ error: "Failed to send reset password OTP" }).code(500);
   }
 };
 
-const confirmResetPassword = async (req, h) => {
-  const {token, newPassword} = req.payload;
+const verifyResetToken = async (req, h) => {
+  const { email, otp } = req.payload;
 
-  if (!token || !newPassword) {
-    return h.response({error: "token and new password required"}).code(400);
+  if (!email || !otp) {
+    return h.response({ error: "Email and OTP are required" }).code(400);
   }
 
   try {
-    const [users] = await db.query('SELECT * FROM users WHERE resetToken = ? AND resetTokenExpire > NOW()', [token]);   
-    
-    if (users.length === 0) {
-      return h.response({error: "invalid or expired token"}).code(400);
+    // Cek apakah OTP valid dan belum kadaluarsa
+    const [otpRecords] = await db.query(
+      `SELECT * FROM otp_verification 
+       WHERE email = ? AND otp = ? AND type = 'password_reset' 
+       AND expires_at > NOW() AND request_reset_password = TRUE`,
+      [email, otp]
+    );
+
+    if (otpRecords.length === 0) {
+      return h.response({ error: "Invalid or expired OTP" }).code(400);
     }
 
-    const user = users[0];
+    // OTP valid, ubah request_reset_password ke FALSE dan otp_verified ke TRUE
+    await db.query(
+      `UPDATE otp_verification 
+       SET request_reset_password = FALSE, otp_verified = TRUE 
+       WHERE email = ? AND otp = ?`,
+      [email, otp]
+    );
 
-    const hashedPassword = await bcrypt.hash(newPassword,8);
+    return h.response({ message: "OTP verified successfully" }).code(200);
+  } catch (error) {
+    console.error("Error verifying OTP:", error);
+    return h.response({ error: "Failed to verify OTP" }).code(500);
+  }
+};
 
-    await db.query('UPDATE users SET password = ?, resetToken = NULL, resetTokenExpire = NULL WHERE id = ?', [hashedPassword, user.id]);
+const resetPassword = async (req, h) => {
+  const { email, newPassword } = req.payload;
 
-    return h.response({message: "Reset Password Successfully"}).code(200);
-  } 
-  
-  catch (error) {
-    console.error("error confirming password reset: ", error);
-    return h.response({error: "failde to confirm password reset"}).code(500);
+  if (!email || !newPassword) {
+    return h.response({ error: "Email and new password are required" }).code(400);
+  }
+
+  try {
+    // Cek apakah OTP sudah diverifikasi
+    const [otpRecords] = await db.query(
+      `SELECT * FROM otp_verification 
+       WHERE email = ? AND type = 'password_reset' 
+       AND otp_verified = TRUE AND request_reset_password = FALSE`,
+      [email]
+    );
+
+    if (otpRecords.length === 0) {
+      return h.response({ error: "OTP not verified or invalid request" }).code(400);
+    }
+
+    // Hash password baru
+    const hashedPassword = await bcrypt.hash(newPassword, 8);
+
+    // Update password di tabel users
+    await db.query('UPDATE users SET password = ? WHERE email = ?', [hashedPassword, email]);
+
+    // Hapus OTP dari tabel otp_verification
+    await db.query('DELETE FROM otp_verification WHERE email = ? AND type = "password_reset"', [email]);
+
+    return h.response({ message: "Password reset successfully" }).code(200);
+  } catch (error) {
+    console.error("Error resetting password:", error);
+    return h.response({ error: "Failed to reset password" }).code(500);
   }
 };
 
@@ -204,5 +256,6 @@ module.exports = {
   verifyOTP,
   loginUser,
   requestResetPassword,
-  confirmResetPassword,
+  verifyResetToken,
+  resetPassword,
 }

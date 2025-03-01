@@ -30,17 +30,17 @@ const routes = [
     path: '/input_user_data',
     handler: handler.userData.inputUserData,
   },
-  {
-    method: 'GET',
-    path: '/user/profile',
-    handler: handler.userData.getUserData,  // Handler untuk ambil data user
-    options: {
-      auth: 'jwt'  // Middleware JWT
-    }
-  },
+  // {
+  //   method: 'GET',
+  //   path: '/user/profile',
+  //   handler: handler.userData.getUserData,  // Handler untuk ambil data user
+  //   options: {
+  //     auth: 'jwt'  // Middleware JWT
+  //   }
+  // },
   {
     method: 'POST',
-    path: '/reset_password',
+    path: '/request_reset_password',
     handler: handler.account.requestResetPassword,
     options: {
       auth: false
@@ -48,11 +48,19 @@ const routes = [
   },
   {
     method: 'POST',
-    path: '/confirm_new_password',
-    handler: handler.account.confirmResetPassword,
+    path: '/verify_reset_password',
+    handler: handler.account.verifyResetToken,
     options: {
       auth: false
     },
+  },
+  {
+    method: 'POST',
+    path: '/reset_password',
+    handler: handler.account.resetPassword,
+    options: {
+      auth: false
+    }, 
   },
 ];
 
